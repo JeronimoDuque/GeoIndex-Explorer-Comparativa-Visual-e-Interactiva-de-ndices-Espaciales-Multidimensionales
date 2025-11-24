@@ -122,3 +122,66 @@ def benchmark_rtree(sizes, max_entries=4, rect_size=0.001, center=(6.24, -75.58)
         'avg_entries': avg_entries,
         'num_leaves': num_leaves_list
     }
+
+
+def analyze_gridfile_instance(gf: GridFile):
+    """Analiza un GridFile existente y devuelve métricas similares a benchmark_gridfile para un único tamaño."""
+    import tracemalloc, time
+    gc.collect()
+    tracemalloc.start()
+    start = time.perf_counter()
+
+    # computar número total de puntos
+    total_points = 0
+    for bucket in gf.directory.values():
+        # Bucket.points es la lista de puntos
+        try:
+            total_points += len(bucket.points)
+        except Exception:
+            # estructura inesperada
+            pass
+
+    elapsed = time.perf_counter() - start
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    total_buckets = len(gf.directory)
+    avg_occ = (total_points / total_buckets) if total_buckets > 0 else 0
+    lf = avg_occ / gf.capacity if getattr(gf, 'capacity', 1) > 0 else 0
+
+    return {
+        'sizes': [total_points],
+        'times': [elapsed],
+        'mem_peaks': [peak],
+        'load_factors': [lf],
+        'avg_occupancies': [avg_occ],
+        'num_cells': [total_buckets]
+    }
+
+
+def analyze_rtree_instance(tree: RTree):
+    """Analiza un RTree existente y devuelve métricas similares a benchmark_rtree para un único tamaño."""
+    import tracemalloc, time
+    gc.collect()
+    tracemalloc.start()
+    start = time.perf_counter()
+
+    # contar entradas totales y hojas
+    num_leaves, total_entries, leaves = _get_rtree_leaf_stats(tree.root)
+
+    elapsed = time.perf_counter() - start
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    max_entries = getattr(tree.root, 'max_entries', 4)
+    avg_ent = (total_entries / num_leaves) if num_leaves > 0 else 0
+    lf = avg_ent / max_entries if max_entries > 0 else 0
+
+    return {
+        'sizes': [total_entries],
+        'times': [elapsed],
+        'mem_peaks': [peak],
+        'load_factors': [lf],
+        'avg_entries': [avg_ent],
+        'num_leaves': [num_leaves]
+    }

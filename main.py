@@ -11,6 +11,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtCore import QUrl, Qt, QPointF, QObject, pyqtSlot
 import json
+import numpy as np
 try:
     from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
@@ -19,7 +20,7 @@ try:
 except Exception:
     HAS_MPL = False
 
-from trees.metrics import benchmark_gridfile, benchmark_rtree
+from trees.metrics import benchmark_gridfile, benchmark_rtree, analyze_gridfile_instance, analyze_rtree_instance
 from trees.osm_loader import fetch_pois_by_bbox
 
 from Nodes.R_tree.Point import Point
@@ -349,26 +350,105 @@ class MapWindow(QMainWindow):
     def run_metrics(self):
         # tamaños de prueba (puedes ajustar)
         sizes = [100, 500, 2000]
+        # preguntar al usuario si usar datos actuales o generar sintéticos
+        choices = ['Sintético (crear datos aleatorios)', 'GridFile (usar datos actuales)', 'RTree (usar datos actuales)', 'Ambos actuales (GridFile y RTree)']
+        choice, ok = QInputDialog.getItem(self, 'Fuente de datos para benchmark', 'Selecciona fuente de datos:', choices, 0, False)
+        if not ok or not choice:
+            choice = choices[0]
+
         self.text_panel.setPlainText('Ejecutando benchmarks... esto puede tardar unos segundos.')
 
-        # GridFile
-        gf_res = benchmark_gridfile(sizes, capacity=4)
+        gf_res = None
+        rt_res = None
 
-        # RTree
-        rt_res = benchmark_rtree(sizes, max_entries=4)
+        if choice == choices[0]:
+            # sintético (comportamiento por defecto)
+            gf_res = benchmark_gridfile(sizes, capacity=4)
+            rt_res = benchmark_rtree(sizes, max_entries=4)
+        elif choice == choices[1]:
+            # usar GridFile actual
+            try:
+                gf_res = analyze_gridfile_instance(self.gridfile)
+            except Exception as e:
+                self.text_panel.setPlainText(f'Error analizando GridFile actual: {e}')
+                return
+        elif choice == choices[2]:
+            # usar RTree actual
+            try:
+                rt_res = analyze_rtree_instance(self.tree)
+            except Exception as e:
+                self.text_panel.setPlainText(f'Error analizando RTree actual: {e}')
+                return
+        else:
+            # ambos actuales
+            try:
+                gf_res = analyze_gridfile_instance(self.gridfile)
+            except Exception as e:
+                self.text_panel.setPlainText(f'Error analizando GridFile actual: {e}')
+                return
+            try:
+                rt_res = analyze_rtree_instance(self.tree)
+            except Exception as e:
+                self.text_panel.setPlainText(f'Error analizando RTree actual: {e}')
+                return
 
         # Dibujar gráficos: load_factor y tiempos (o mostrar instrucciones si falta matplotlib)
         if HAS_MPL:
             self.fig.clear()
             ax1 = self.fig.add_subplot(2, 1, 1)
-            ax1.plot(gf_res['sizes'], gf_res['load_factors'], marker='o', label='GridFile LF')
-            ax1.plot(rt_res['sizes'], rt_res['load_factors'], marker='o', label='RTree LF')
+            # Gráfico de barras para Factor de Carga
+            if gf_res is not None and rt_res is not None and gf_res['sizes'] == rt_res['sizes']:
+                x = np.arange(len(gf_res['sizes']))
+                width = 0.35
+                ax1.bar(x - width/2, gf_res['load_factors'], width, label='GridFile LF')
+                ax1.bar(x + width/2, rt_res['load_factors'], width, label='RTree LF')
+                ax1.set_xticks(x)
+                ax1.set_xticklabels([str(s) for s in gf_res['sizes']])
+            else:
+                # Trazar cada conjunto en su propio offset si existen
+                offset = 0.0
+                if gf_res is not None:
+                    xg = np.arange(len(gf_res['sizes'])) + offset
+                    ax1.bar(xg, gf_res['load_factors'], 0.4, label='GridFile LF')
+                    ax1.set_xticks(xg)
+                    ax1.set_xticklabels([str(s) for s in gf_res['sizes']])
+                    offset += len(gf_res['sizes']) + 1
+                if rt_res is not None:
+                    xr = np.arange(len(rt_res['sizes'])) + offset
+                    ax1.bar(xr, rt_res['load_factors'], 0.4, label='RTree LF')
+                    # extender etiquetas
+                    ticks = list(ax1.get_xticks()) + list(xr)
+                    labels = list(ax1.get_xticklabels()) + [str(s) for s in rt_res['sizes']]
+                    try:
+                        ax1.set_xticks(ticks)
+                        ax1.set_xticklabels([lbl.get_text() if hasattr(lbl, 'get_text') else str(lbl) for lbl in labels])
+                    except Exception:
+                        pass
+
             ax1.set_ylabel('Factor de Carga')
             ax1.legend()
 
             ax2 = self.fig.add_subplot(2, 1, 2)
-            ax2.plot(gf_res['sizes'], gf_res['times'], marker='o', label='GridFile time')
-            ax2.plot(rt_res['sizes'], rt_res['times'], marker='o', label='RTree time')
+            # Gráfico de barras para tiempos
+            if gf_res is not None and rt_res is not None and gf_res['sizes'] == rt_res['sizes']:
+                x = np.arange(len(gf_res['sizes']))
+                width = 0.35
+                ax2.bar(x - width/2, gf_res['times'], width, label='GridFile time')
+                ax2.bar(x + width/2, rt_res['times'], width, label='RTree time')
+                ax2.set_xticks(x)
+                ax2.set_xticklabels([str(s) for s in gf_res['sizes']])
+            else:
+                offset = 0.0
+                if gf_res is not None:
+                    xg = np.arange(len(gf_res['sizes'])) + offset
+                    ax2.bar(xg, gf_res['times'], 0.4, label='GridFile time')
+                    ax2.set_xticks(xg)
+                    ax2.set_xticklabels([str(s) for s in gf_res['sizes']])
+                    offset += len(gf_res['sizes']) + 1
+                if rt_res is not None:
+                    xr = np.arange(len(rt_res['sizes'])) + offset
+                    ax2.bar(xr, rt_res['times'], 0.4, label='RTree time')
+
             ax2.set_xlabel('N (nº de inserciones)')
             ax2.set_ylabel('Tiempo (s)')
             ax2.legend()
@@ -378,13 +458,15 @@ class MapWindow(QMainWindow):
         else:
             # Mostrar resumen numérico en el panel
             lines = ["matplotlib no está instalado. Instala con: pip install matplotlib", ""]
-            lines.append("GridFile:")
-            for s, t, m, lf in zip(gf_res['sizes'], gf_res['times'], gf_res['mem_peaks'], gf_res['load_factors']):
-                lines.append(f"N={s}: time={t:.4f}s, mem_peak={m/1024:.1f} KiB, load_factor={lf:.3f}")
-            lines.append("")
-            lines.append("RTree:")
-            for s, t, m, lf in zip(rt_res['sizes'], rt_res['times'], rt_res['mem_peaks'], rt_res['load_factors']):
-                lines.append(f"N={s}: time={t:.4f}s, mem_peak={m/1024:.1f} KiB, load_factor={lf:.3f}")
+            if gf_res is not None:
+                lines.append("GridFile:")
+                for s, t, m, lf in zip(gf_res['sizes'], gf_res['times'], gf_res['mem_peaks'], gf_res['load_factors']):
+                    lines.append(f"N={s}: time={t:.4f}s, mem_peak={m/1024:.1f} KiB, load_factor={lf:.3f}")
+                lines.append("")
+            if rt_res is not None:
+                lines.append("RTree:")
+                for s, t, m, lf in zip(rt_res['sizes'], rt_res['times'], rt_res['mem_peaks'], rt_res['load_factors']):
+                    lines.append(f"N={s}: time={t:.4f}s, mem_peak={m/1024:.1f} KiB, load_factor={lf:.3f}")
             self.text_panel.setPlainText("\n".join(lines))
 
     def eventFilter(self, source, event):

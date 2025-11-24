@@ -1,0 +1,31 @@
+Uso de las estructuras de datos en este proyecto
+
+R-Tree
+- Propósito en la app: índice principal para consultas espaciales por MBR/polígono. Se usa para buscar objetos que potencialmente intersectan un polígono dibujado en el mapa.
+- Inserción: cada POI se inserta con una MBR pequeña (rectángulo alrededor del punto) y un objeto de datos asociado (id, tags, lat, lon).
+- Consulta: `intersect_polygon` calcula el MBR del polígono, hace una búsqueda rápida en el árbol para obtener candidatos y luego filtra con tests geométricos exactos (`rect_polygon_intersection`).
+- Notas: los nodos mantienen `children` y `rectangles` paralelos; la heurística de inserción usa mínima expansión de área; la división es lineal.
+
+GridFile
+- Propósito en la app: estructura alternativa para comparar comportamiento en particionado espacial y factor de carga.
+- Inserción: puntos se insertan en celdas (buckets). En la implementación actual, al cargar POIs para una búsqueda concreta el GridFile se reconfigura para la bounding box de la búsqueda (splits y directory se reinician para ese área).
+- Consulta: `range_query` revisa solo las celdas que intersectan el rectángulo de consulta y devuelve puntos contenidos.
+- Notas: esta implementación está pensada para experimentación; si se desea acumulación global, se puede modificar para expandir splits en lugar de resetear.
+
+KD-Tree (Adaptive KD-Tree)
+- Propósito en la app: estructura para búsquedas tipo nearest / particionado de puntos; se incluye para comparar estrategias de particionado y búsqueda puntual.
+- Inserción: mantiene un árbol binario donde cada nodo elige el eje de división por mayor varianza entre sus puntos (eje adaptativo). Inserciones actualizan y pueden desencadenar un rebalanceo local si hay desbalance fuerte.
+- Consulta: `nearest_neighbor` implementa la búsqueda clásica (explora rama prometedora y luego la otra si es necesario).
+- Notas: diseñado para datos en memoria; la versión aquí rebalancea localmente y es útil para comparar tiempos de búsqueda y reconstrucción.
+
+QuadTree
+- Propósito en la app: estructura espacial basada en subdivisión de cuadrantes, útil para consultas de rango en áreas regulares.
+- Inserción: puntos se insertan en la celda correspondiente; cuando la capacidad se supera la celda se subdivide en cuatro hijos.
+- Consulta: `query(range_rect)` recorre solo nodos cuya boundary intersecta el rectángulo de consulta y devuelve puntos contenidos.
+- Notas: el `QuadTree` se inicia con una boundary fija; si se desea aceptar puntos fuera de esa área, hace falta reconfigurar/expandir la boundary.
+
+Resumen práctico
+- En la app, al descargar POIs puedes escoger en qué estructura insertar (R-Tree, GridFile, KD-Tree, QuadTree o "Todos").
+- Las consultas por polígono usan el R-Tree para filtrar rápidamente y luego aplican tests geométricos exactos.
+- Las otras estructuras están disponibles para comparar métricas (factor de carga, tiempos, memoria) y para experimentos sobre inserción/consulta.
+
