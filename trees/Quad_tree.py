@@ -1,5 +1,5 @@
 from Nodes.Rectangle_Q import Rectangle_Q
-from Nodes.Point import Point
+from Nodes.R_tree.Point import Point
 
 class QuadTree:
     def __init__(self, boundary, capacity=4):

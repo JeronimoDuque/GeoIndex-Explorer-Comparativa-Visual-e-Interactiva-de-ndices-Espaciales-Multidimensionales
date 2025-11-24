@@ -1,4 +1,4 @@
-from Nodes.Point import Point
+from Nodes.R_tree.Point import Point
 
 class Rectangle_Q:
     def __init__(self, x, y, w, h):

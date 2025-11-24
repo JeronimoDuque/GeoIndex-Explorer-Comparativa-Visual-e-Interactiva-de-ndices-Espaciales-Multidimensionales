@@ -1,10 +1,11 @@
 class Rectangle:
+    """ Mínimo rectángulo envolvente """
     def __init__(self, xmin, ymin, xmax, ymax):
         self.xmin = xmin
         self.ymin = ymin
         self.xmax = xmax
         self.ymax = ymax
-
+    
     def intersects(self, other):
         return not (self.xmax < other.xmin or
                     self.xmin > other.xmax or
@@ -16,7 +17,7 @@ class Rectangle:
         self.ymin = min(self.ymin, other.ymin)
         self.xmax = max(self.xmax, other.xmax)
         self.ymax = max(self.ymax, other.ymax)
-
+    
     def area(self):
         return (self.xmax - self.xmin) * (self.ymax - self.ymin)
 
@@ -27,4 +28,3 @@ class Rectangle:
         xmax = max(r.xmax for r in rectangles)
         ymax = max(r.ymax for r in rectangles)
         return Rectangle(xmin, ymin, xmax, ymax)
-
